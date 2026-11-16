@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 炒股 Agent</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<style>
+:root {
+  --bg: #0b0e14; --panel: #131822; --panel2: #1a2130; --border: #232c3f;
+  --text: #dbe2f0; --muted: #7b869e; --accent: #4f8cff; --accent2: #2ea3f2;
+  --up: #f04a5e; --down: #2ec27e; --warn: #f5b942; --radius: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 14px; height: 100vh; overflow: hidden; }
+#app { display: flex; height: 100vh; }
+/* 侧边栏 */
+#sidebar { width: 200px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; }
+.logo { padding: 22px 18px 16px; font-size: 19px; font-weight: 700; letter-spacing: 1px; }
+.logo .ai { color: var(--accent); }
+.logo small { display: block; font-size: 10px; color: var(--muted); font-weight: 400; margin-top: 4px; letter-spacing: 2px; }
+.nav { flex: 1; padding: 8px; overflow-y: auto; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 8px; cursor: pointer; color: var(--muted); margin-bottom: 2px; transition: all .15s; font-size: 13.5px; }
+.nav-item:hover { background: var(--panel2); color: var(--text); }
+.nav-item.active { background: linear-gradient(90deg, rgba(79,140,255,.18), transparent); color: var(--accent); font-weight: 600; }
+.nav-item .icon { width: 18px; text-align: center; font-size: 15px; }
+#llmBadge { margin: 10px; padding: 10px; border-radius: 8px; background: var(--panel2); font-size: 11px; color: var(--muted); border: 1px solid var(--border); }
+#llmBadge.ok { border-color: rgba(46,194,126,.4); color: var(--down); }
+#llmBadge .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--warn); }
+#llmBadge.ok .dot { background: var(--down); }
+/* 主区域 */
+#main { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.topbar { height: 52px; border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 22px; gap: 14px; background: var(--panel); flex-shrink: 0; }
+.topbar h2 { font-size: 16px; font-weight: 600; }
+.topbar .sub { color: var(--muted); font-size: 12px; }
+.content { flex: 1; overflow-y: auto; padding: 20px 22px; }
+.page { display: none; }
+.page.active { display: block; }
+/* 通用组件 */
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; }
+.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--accent); }
+.btn { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 9px 18px; cursor: pointer; font-size: 13px; font-weight: 600; transition: opacity .15s; }
+.btn:hover { opacity: .88; }
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+.btn.ghost:hover { color: var(--text); border-color: var(--accent); }
+.btn.sm { padding: 5px 12px; font-size: 12px; }
+.btn.danger { background: transparent; border: 1px solid rgba(240,74,94,.4); color: var(--up); }
+input, select { background: var(--panel2); border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 9px 12px; font-size: 13px; outline: none; width: 100%; }
+input:focus, select:focus { border-color: var(--accent); }
+label.field { display: block; margin-bottom: 12px; }
+label.field span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.row { display: flex; gap: 12px; } .row > * { flex: 1; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px; white-space: nowrap; }
+td { padding: 9px 10px; border-bottom: 1px solid rgba(35,44,63,.5); white-space: nowrap; }
+tr:hover td { background: rgba(79,140,255,.05); }
+.up { color: var(--up); } .down { color: var(--down); }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; background: var(--panel2); color: var(--muted); }
+.pill.blue { background: rgba(79,140,255,.15); color: var(--accent); }
+.pill.red { background: rgba(240,74,94,.15); color: var(--up); }
+.pill.green { background: rgba(46,194,126,.15); color: var(--down); }
+.empty { text-align: center; color: var(--muted); padding: 40px 0; font-size: 13px; }
+.loading { text-align: center; color: var(--muted); padding: 30px 0; }
+/* 指数卡片 */
+.idx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.idx-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; }
+.idx-card .name { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.idx-card .val { font-size: 22px; font-weight: 700; }
+.idx-card .chg { font-size: 12px; margin-top: 4px; }
+/* K线容器 */
+#kchart { width: 100%; height: 380px; }
+/* 对话 */
+#chatWrap { display: flex; flex-direction: column; height: calc(100vh - 130px); }
+#chatLog { flex: 1; overflow-y: auto; padding: 10px 4px; }
+.msg { max-width: 86%; margin-bottom: 14px; }
+.msg.user { margin-left: auto; }
+.msg .bubble { padding: 12px 15px; border-radius: 12px; line-height: 1.65; font-size: 13.5px; word-break: break-word; }
+.msg.user .bubble { background: linear-gradient(135deg, #3b6fd4, #4f8cff); color: #fff; border-bottom-right-radius: 3px; }
+.msg.ai .bubble { background: var(--panel); border: 1px solid var(--border); border-bottom-left-radius: 3px; }
+.msg .bubble p { margin: 6px 0; }
+.msg .bubble h2, .msg .bubble h3 { margin: 12px 0 6px; font-size: 14.5px; color: var(--accent); }
+.msg .bubble h2 { font-size: 15.5px; }
+.msg .bubble ul, .msg .bubble ol { margin: 6px 0 6px 20px; }
+.msg .bubble code { background: rgba(79,140,255,.12); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+.msg .bubble pre { background: #0d1220; border: 1px solid var(--border); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+.msg .bubble table { display: block; width: 100%; overflow-x: auto; margin: 8px 0; border-collapse: collapse; }
+.msg .bubble th, .msg .bubble td { padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.msg .bubble strong { color: #fff; }
+details.toolcall { background: #0d1220; border: 1px dashed var(--border); border-radius: 8px; margin: 8px 0; font-size: 12px; color: var(--muted); }
+details.toolcall summary { padding: 7px 12px; cursor: pointer; color: var(--accent2); user-select: none; }
+details.toolcall pre { padding: 0 12px 10px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 220px; overflow-y: auto; }
+.chat-input { display: flex; gap: 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+.chat-input textarea { flex: 1; resize: none; background: var(--panel2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 14px; font-size: 13.5px; font-family: inherit; outline: none; height: 46px; max-height: 120px; }
+.typing { display: inline-flex; gap: 4px; padding: 6px 0; }
+.typing i { width: 6px; height: 6px; background: var(--muted); border-radius: 50%; animation: blink 1.2s infinite; }
+.typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%,80%,100% { opacity: .2; } 40% { opacity: 1; } }
+/* 设置 */
+.preset-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.chip { padding: 7px 14px; border-radius: 20px; background: var(--panel2); border: 1px solid var(--border); cursor: pointer; font-size: 12px; color: var(--muted); transition: all .15s; }
+.chip:hover, .chip.active { border-color: var(--accent); color: var(--accent); }
+.switch { position: relative; width: 42px; height: 23px; background: var(--panel2); border: 1px solid var(--border); border-radius: 20px; cursor: pointer; transition: all .2s; flex-shrink: 0; }
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; background: #fff; border-radius: 50%; transition: all .2s; }
+.switch.on::after { left: 21px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; }
+.switch-row .desc { font-size: 12px; color: var(--muted); margin-top: 3px; }
+/* 盯盘事件 */
+.event { display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px; border-radius: 10px; background: var(--panel2); margin-bottom: 10px; border-left: 3px solid var(--warn); }
+.event .time { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.toast { position: fixed; top: 18px; right: 18px; z-index: 99; background: var(--panel2); border: 1px solid var(--accent); color: var(--text); padding: 12px 18px; border-radius: 10px; font-size: 13px; box-shadow: 0 8px 30px rgba(0,0,0,.5); display: none; }
+.tag { font-size: 11px; color: var(--muted); }
+.hint { font-size: 12px; color: var(--muted); line-height: 1.7; }
+.hint b { color: var(--warn); }
+/* AI 报告/总结 Markdown 容器：防止长表格、长文本撑破屏幕 */
+#reportOut, #summaryOut { max-width: 100%; }
+#reportOut :is(p, li, h1, h2, h3, h4), #summaryOut :is(p, li) { overflow-wrap: anywhere; }
+#reportOut pre, #summaryOut pre { background: #0d1220; border: 1px solid var(--border); padding: 10px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+#reportOut code, #summaryOut code { background: rgba(79,140,255,.12); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+#reportOut h2, #reportOut h3 { margin: 14px 0 6px; color: var(--accent); }
+#reportOut ul, #reportOut ol { margin: 6px 0 6px 20px; }
+#reportOut p { margin: 6px 0; line-height: 1.7; }
+#reportOut table, #summaryOut table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; margin: 8px 0; font-size: 12.5px; }
+#reportOut th, #reportOut td, #summaryOut th, #summaryOut td { padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: left; }
+#reportOut th { color: var(--muted); font-weight: 500; }
+/* AI 信号操作卡 */
+.signal-card { border: 1px solid rgba(79,140,255,.35); background: linear-gradient(135deg, rgba(79,140,255,.08), rgba(79,140,255,.02)); border-radius: 10px; padding: 14px; }
+.signal-head { font-size: 14.5px; margin-bottom: 10px; }
+.signal-head b { color: var(--accent); font-size: 16px; margin: 0 4px; }
+.signal-prices { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+.signal-prices > div { display: flex; align-items: center; gap: 6px; font-size: 13.5px; }
+.signal-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+/* Open 模式警示与弹窗 */
+.open-banner { background: rgba(240,74,94,.1); border: 1px solid rgba(240,74,94,.45); border-radius: 10px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; color: var(--up); line-height: 1.7; }
+.btn.danger-solid { background: var(--up); }
+.modal-mask { position: fixed; inset: 0; background: rgba(5,8,14,.75); z-index: 100; display: none; align-items: center; justify-content: center; }
+.modal-mask.show { display: flex; }
+.modal { width: 560px; max-width: 92vw; max-height: 86vh; overflow-y: auto; background: var(--panel); border: 1px solid rgba(240,74,94,.5); border-radius: 14px; padding: 26px 28px; }
+.modal h3 { color: var(--up); font-size: 16px; margin-bottom: 14px; }
+.modal .terms { font-size: 12.5px; color: var(--text); line-height: 1.9; background: var(--panel2); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+.modal .terms b { color: var(--warn); }
+.modal .agree { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; margin-bottom: 18px; cursor: pointer; line-height: 1.6; }
+.modal .agree input { width: 17px; height: 17px; margin-top: 2px; flex-shrink: 0; cursor: pointer; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #2a3448; border-radius: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div class="logo">📈 AI<span class="ai">炒股</span> Agent<small>TRAE 好应用大赏</small></div>
+    <div class="nav">
+      <div class="nav-item active" data-page="dashboard"><span class="icon">📊</span>仪表盘</div>
+      <div class="nav-item" data-page="analyze"><span class="icon">🔍</span>个股分析</div>
+      <div class="nav-item" data-page="screen"><span class="icon">🎯</span>智能选股</div>
+      <div class="nav-item" data-page="watch"><span class="icon">🔔</span>盯盘提醒</div>
+      <div class="nav-item" data-page="chat"><span class="icon">💬</span>AI 对话</div>
+      <div class="nav-item" data-page="trade"><span class="icon">⚡</span>交易</div>
+      <div class="nav-item" data-page="settings" style="display:none" id="navCrypto"><span class="icon">🪙</span>加密货币</div>
+      <div class="nav-item" data-page="audit"><span class="icon">📋</span>审计日志</div>
+      <div class="nav-item" data-page="settings"><span class="icon">⚙️</span>设置</div>
+    </div>
+    <div id="llmBadge"><span class="dot"></span><span id="llmBadgeText">检查 API 状态…</span></div>
+  </div>
+  <div id="main">
+    <div class="topbar"><h2 id="pageTitle">仪表盘</h2><span class="sub" id="pageSub"></span></div>
+    <div class="content">
+
+      <!-- 仪表盘 -->
+      <div class="page active" id="page-dashboard">
+        <div class="idx-grid" id="idxGrid"><div class="loading">加载指数行情…</div></div>
+        <div class="card">
+          <h3>自选股</h3>
+          <div class="row" style="margin-bottom:12px">
+            <input id="favInput" placeholder="输入股票代码，如 600519" style="max-width:260px">
+            <button class="btn sm" style="max-width:90px" onclick="addFav()">添加</button>
+          </div>
+          <div style="overflow-x:auto"><table id="favTable"><thead>
+            <tr><th>代码</th><th>名称</th><th>最新价</th><th>涨跌幅</th><th>涨跌额</th><th>成交额</th><th>换手率</th><th>操作</th></tr>
+          </thead><tbody></tbody></table></div>
+        </div>
+        <div class="card">
+          <h3>AI 市场总结</h3>
+          <button class="btn" id="btnSummary" onclick="genSummary()">生成今日市场解读</button>
+          <div id="summaryOut" class="hint" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <!-- 个股分析 -->
+      <div class="page" id="page-analyze">
+        <div class="card">
+          <div class="row" style="align-items:flex-end">
+            <div><label class="field" style="margin:0"><span>股票代码</span>
+              <input id="anaSymbol" placeholder="如 600519 / 000001 / 300750"></label></div>
+            <button class="btn" style="max-width:140px" onclick="doAnalyze()">分析</button>
+          </div>
+        </div>
+        <div id="anaResult" style="display:none">
+          <div class="idx-grid" id="anaCards"></div>
+          <div class="card"><h3>日K线（前复权）</h3><div id="kchart"></div></div>
+          <div class="card"><h3>基本面</h3><div id="anaProfile" class="hint"></div></div>
+          <div class="card"><h3>相关新闻</h3><div id="anaNews"></div></div>
+          <div class="card">
+            <h3>AI 深度分析报告</h3>
+            <button class="btn" id="btnReport" onclick="genReport()">生成 AI 报告</button>
+            <div id="reportOut" style="margin-top:12px"></div>
+            <div id="signalBox" style="display:none;margin-top:10px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 智能选股 -->
+      <div class="page" id="page-screen">
+        <div class="card">
+          <h3>选择选股策略</h3>
+          <div class="preset-chips">
+            <div class="chip active" data-st="volume_break">🔥 放量突破</div>
+            <div class="chip" data-st="oversold">🔄 超跌反弹</div>
+            <div class="chip" data-st="ma_bull">📈 均线多头</div>
+            <div class="chip" data-st="hot">💰 热门人气</div>
+          </div>
+          <button class="btn" id="btnScreen" onclick="doScreen()">开始选股</button>
+          <span class="tag" style="margin-left:10px">选股完成后可让 AI 对话助手点评个股</span>
+        </div>
+        <div class="card"><h3 id="screenTitle">选股结果</h3>
+          <div style="overflow-x:auto"><table id="screenTable"><thead>
+            <tr><th>代码</th><th>名称</th><th>最新价</th><th>涨跌幅</th><th>成交额(亿)</th><th>换手率</th><th>操作</th></tr>
+          </thead><tbody><tr><td colspan="7" class="empty">尚未选股</td></tr></tbody></table></div>
+        </div>
+      </div>
+
+      <!-- 盯盘提醒 -->
+      <div class="page" id="page-watch">
+        <div class="card">
+          <h3>添加盯盘规则</h3>
+          <div class="row">
+            <label class="field"><span>股票代码</span><input id="wSymbol" placeholder="600519"></label>
+            <label class="field"><span>规则类型</span><select id="wType">
+              <option value="price_above">价格 ≥ 阈值</option>
+              <option value="price_below">价格 ≤ 阈值</option>
+              <option value="pct_above">涨幅 ≥ %</option>
+              <option value="pct_below">跌幅 ≥ %</option>
+            </select></label>
+            <label class="field"><span>阈值</span><input id="wThreshold" type="number" step="0.01" placeholder="1700"></label>
+          </div>
+          <button class="btn" onclick="addWatchRule()">添加规则</button>
+          <span class="tag" style="margin-left:10px">后台自动轮询，触发后在此显示，10分钟内不重复</span>
+        </div>
+        <div class="card"><h3>已设规则</h3><table id="ruleTable"><thead>
+          <tr><th>代码</th><th>规则</th><th>操作</th></tr></thead><tbody></tbody></table></div>
+        <div class="card"><h3>提醒事件</h3><div id="eventList"><div class="empty">暂无提醒</div></div></div>
+      </div>
+
+      <!-- AI 对话 -->
+      <div class="page" id="page-chat">
+        <div id="chatWrap">
+          <div id="chatLog"></div>
+          <div class="chat-input">
+            <textarea id="chatInput" placeholder="问我任何炒股问题，例如：帮我分析一下贵州茅台 / 今天市场怎么样 / 用放量突破策略选几只股票"></textarea>
+            <button class="btn" id="btnSend" onclick="sendChat()">发送</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 交易 -->
+      <div class="page" id="page-trade">
+        <div class="open-banner" id="openBanner" style="display:none">
+          ⚠️ <b>Open 模式已开启</b> —— AI 拥有极高权限，可自主向券商提交委托单（无需人工确认）。
+          由此产生的一切交易结果由您本人承担，请保持对浏览器交易页面的监控。
+          <a href="javascript:void(0)" onclick="toggleAutoMode(false)" style="color:var(--up)">立即关闭</a>
+        </div>
+        <div class="card">
+          <h3>第一步：连接券商（本地浏览器登录）</h3>
+          <p class="hint" style="margin-bottom:12px">点击下方按钮会打开本地浏览器并进入券商网页交易系统，<b>请使用你自己的账号登录</b>。Agent 只在你已登录的浏览器中自动填充委托单，<b>买入/卖出按钮始终由你人工点击确认</b>。</p>
+          <div class="row" style="align-items:flex-end">
+            <label class="field" style="margin:0"><span>券商网页交易地址（默认东方财富）</span>
+              <input id="brokerUrl" value="https://jywg.eastmoney.com/"></label>
+            <button class="btn" style="max-width:150px" onclick="openBroker()">打开浏览器登录</button>
+          </div>
+          <p class="tag" id="tradeStatus" style="margin-top:10px"></p>
+        </div>
+        <div class="card">
+          <h3>第二步：委托单（AI 建议或手动填写）</h3>
+          <div class="row">
+            <label class="field"><span>股票代码</span><input id="oSymbol" placeholder="600519"></label>
+            <label class="field"><span>方向</span><select id="oSide"><option value="buy">买入</option><option value="sell">卖出</option></select></label>
+            <label class="field"><span>委托价格</span><input id="oPrice" type="number" step="0.01"></label>
+            <label class="field"><span>数量（股）</span><input id="oQty" type="number" step="100" value="100"></label>
+          </div>
+          <button class="btn" onclick="fillOrder(false)">自动填充到浏览器</button>
+          <button class="btn danger-solid" id="btnAutoFill" style="display:none" onclick="fillOrder(true)">🔥 自动下单（Open 模式）</button>
+          <p class="hint" style="margin-top:12px">提示：可以先在【AI 对话】中让助手给出委托建议，再回到此页执行。填充完成后请<b>仔细核对价格与数量</b>，再手动点击券商页面的下单按钮。</p>
+        </div>
+        <div class="card">
+          <h3>安全机制</h3>
+          <div class="switch-row"><div><b style="font-size:13px">下单前必须人工确认（默认模式）</b><div class="desc">开启后 Agent 永远不会自动点击"买入/卖出"按钮，仅填充委托信息（强烈建议开启）</div></div>
+            <div class="switch on" id="swConfirm" onclick="toggleConfirm(this)"></div></div>
+          <div class="switch-row" style="border-top:1px solid var(--border);margin-top:6px;padding-top:14px">
+            <div><b style="font-size:13px;color:var(--up)">🔥 Open 模式：AI 自主下单（极高权限）</b>
+            <div class="desc">开启后 AI 可不经人工确认直接向券商提交委托。<b style="color:var(--up)">风险自负</b>，需先阅读并同意免责声明</div></div>
+            <div class="switch" id="swAuto" onclick="toggleAutoMode(null)"></div></div>
+        </div>
+        <div class="card">
+          <h3>🧪 交易控制自检（零风险）</h3>
+          <div class="desc" style="margin-bottom:10px">在本地模拟券商页上完整验证 AI 能否定位输入框、正确填单、真实点击买卖按钮 —— <b>不会产生任何真实交易</b>，随时可测。</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn sm" onclick="runTradeTest('buy')">🧪 测试买入控制</button>
+            <button class="btn sm ghost" onclick="runTradeTest('sell')">🧪 测试卖出控制</button>
+          </div>
+          <div id="tradeTestOut" style="margin-top:10px"></div>
+        </div>
+        <div class="card" id="autoTradeCard">
+          <h3>🤖 全自动交易（盯盘 → AI 决策 → 自动下单）</h3>
+          <div class="switch-row"><div><b style="font-size:13px;color:var(--up)">⚡ 全自动交易开关</b>
+            <div class="desc">盯盘规则触发后，AI 自动复核决策并<b style="color:var(--up)">直接下单</b>。需同时开启 Open 模式才会真正交易，否则仅记录决策建议</div></div>
+            <div class="switch" id="swFullAuto" onclick="toggleFullAuto(this)"></div></div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin:10px 0">
+            <div class="field" style="flex:1;min-width:110px"><label>单笔金额上限（元）</label><input id="atMaxAmount" type="number" step="500" value="5000"></div>
+            <div class="field" style="flex:1;min-width:110px"><label>每日自动交易上限（次）</label><input id="atMaxDaily" type="number" step="1" min="1" value="3"></div>
+            <div class="field" style="flex:1;min-width:110px"><label>AI 置信度阈值（0~1）</label><input id="atMinConf" type="number" step="0.05" min="0" max="1" value="0.7"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn sm" onclick="saveAutoTradeCfg()">保存风控参数</button>
+            <button class="btn sm danger-solid" onclick="stopFullAuto()">🛑 急停（关闭全自动）</button>
+          </div>
+          <div class="desc" style="margin-top:8px">完整链路：盯盘规则触发 → AI 拉实时数据复核 → 置信度达标才执行 → 数量按单笔上限自动计算（整手）→ 委托与理由全部留痕。同一股票 30 分钟冷却。</div>
+          <div style="margin-top:10px"><b style="font-size:13px">决策与执行记录</b><div id="autoTradeEvents" style="margin-top:6px"><div class="empty">暂无事件</div></div></div>
+        </div>
+        <div class="card">
+          <h3>交易日志</h3>
+          <div id="tradeLog"><div class="empty">暂无记录</div></div>
+        </div>
+      </div>
+
+      <!-- 审计日志 -->
+      <div class="page" id="page-audit">
+        <div class="card">
+          <h3>📋 审计日志</h3>
+          <p class="hint" style="margin-bottom:10px">完整留痕：<b>用户做了什么 → AI 分析了什么 → 程序执行了什么</b>。同步写入本地 <code>audit_log.jsonl</code>，可程序化审计回溯。</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <button class="btn sm" data-filter="" onclick="filterAudit(this)">全部</button>
+            <button class="btn sm ghost" data-filter="user_action" onclick="filterAudit(this)">👤 用户操作</button>
+            <button class="btn sm ghost" data-filter="ai_analysis" onclick="filterAudit(this)">🧠 AI 分析</button>
+            <button class="btn sm ghost" data-filter="ai_tool_call" onclick="filterAudit(this)">🔧 工具调用</button>
+            <button class="btn sm ghost" data-filter="trade_exec" onclick="filterAudit(this)">⚡ 交易执行</button>
+            <button class="btn sm ghost" data-filter="watch_trigger" onclick="filterAudit(this)">🔔 盯盘触发</button>
+            <button class="btn sm ghost" data-filter="auto_trade" onclick="filterAudit(this)">🤖 全自动交易</button>
+            <button class="btn sm ghost" data-filter="config_change" onclick="filterAudit(this)">⚙️ 配置变更</button>
+            <button class="btn sm ghost" onclick="loadAuditLog()">↻ 刷新</button>
+          </div>
+          <div id="auditLogOut"><div class="empty">暂无日志</div></div>
+        </div>
+      </div>
+
+      <!-- 设置 -->
+      <div class="page" id="page-settings">
+        <div class="card">
+          <h3>AI 大模型 API（必填）</h3>
+          <p class="hint" style="margin-bottom:12px">本应用<b>不训练任何模型</b>，所有 AI 能力来自你添加的 API。支持 OpenAI 兼容格式的任意服务商，点击预设快速填充：</p>
+          <div class="preset-chips" id="llmPresets"></div>
+          <div class="row">
+            <label class="field"><span>Base URL</span><input id="cfgBaseUrl"></label>
+            <label class="field"><span>模型名称</span><input id="cfgModel"></label>
+          </div>
+          <label class="field"><span>API Key</span><input id="cfgKey" type="password" placeholder="sk-..."></label>
+          <label class="field"><span>温度（0~1，越低越严谨）</span><input id="cfgTemp" type="number" step="0.1" min="0" max="1"></label>
+          <button class="btn" onclick="saveLLM()">保存 AI 配置</button>
+        </div>
+        <div class="card" id="cryptoCard" style="display:none">
+          <h3>加密货币模块（可装卸插件）</h3>
+          <p class="hint" style="margin-bottom:10px">安装：<code>app/plugins/tools_crypto.py</code> 放在插件目录即生效；拆卸：移出该文件并重启即彻底移除。依赖 <code>pip install ccxt</code>。</p>
+          <div class="switch-row"><div><b style="font-size:13px">启用加密货币模块</b><div class="desc" id="cryptoDepHint">默认关闭。启用后 AI 对话将支持加密货币行情查询，交易走交易所 API（默认模拟盘）</div></div>
+            <div class="switch" id="swCrypto" onclick="toggleCrypto(this)"></div></div>
+          <div id="cryptoCfg" style="display:none">
+            <div class="row">
+              <label class="field"><span>交易所</span><select id="cfgExchange"><option>binance</option><option>okx</option><option>bybit</option><option>gate</option><option>bitget</option></select></label>
+              <label class="field"><span>API Key</span><input id="cfgCKey" placeholder="留空则仅查询行情"></label>
+              <label class="field"><span>Secret</span><input id="cfgCSecret" type="password"></label>
+            </div>
+            <div class="switch-row"><div><b style="font-size:13px">沙盒模拟盘</b><div class="desc">开启后使用交易所测试环境，不涉及真实资金</div></div>
+              <div class="switch on" id="swSandbox" onclick="this.classList.toggle('on')"></div></div>
+            <button class="btn" onclick="saveCrypto()">保存加密货币配置</button>
+          </div>
+        </div>
+        <div class="card">
+          <h3>盯盘设置</h3>
+          <label class="field"><span>轮询间隔（秒）</span><input id="cfgPoll" type="number" min="5"></label>
+          <button class="btn" onclick="saveWatchCfg()">保存</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<!-- Open 模式免责声明弹窗 -->
+<div class="modal-mask" id="disclaimerMask">
+  <div class="modal">
+    <h3>⚠️ Open 模式（AI 自主交易）免责声明</h3>
+    <div class="terms">
+      在开启 Open 模式前，请您仔细阅读并充分理解以下条款：<br><br>
+      <b>1. 极高权限</b>：Open 模式下，AI Agent 可在未经您逐笔确认的情况下，直接向券商提交买入/卖出委托单。<br>
+      <b>2. 决策风险</b>：AI 的交易决策由大语言模型根据实时行情数据生成，可能因模型误判、数据延迟、数据异常或不可预见的因素产生错误决策。<br>
+      <b>3. 盈亏自负</b>：股市有风险，投资需谨慎。由 AI 自主交易产生的一切盈亏及后果，均由您本人自行承担，本应用开发者不承担任何责任。<br>
+      <b>4. 非投资建议</b>：本应用及 AI 的任何输出均不构成投资建议，仅作为技术研究与学习工具。<br>
+      <b>5. 使用建议</b>：强烈建议先以小额资金测试，保持对浏览器交易页面的实时监控，并随时可通过"立即关闭"退出 Open 模式。<br>
+      <b>6. 留痕追溯</b>：所有自主下单均记录于交易日志（trade_log.json），请妥善保管。
+    </div>
+    <label class="agree"><input type="checkbox" id="agreeCheck">
+      我已年满 18 周岁，已阅读、理解并同意以上全部条款，自愿承担 Open 模式下 AI 自主交易的一切风险。</label>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn ghost" onclick="closeDisclaimer()">取消</button>
+      <button class="btn danger-solid" id="btnAgree" disabled onclick="agreeDisclaimer()">同意并开启 Open 模式</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const API = '';
+let CONFIG = null;
+
+function toast(msg, ok=true) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.style.borderColor = ok ? 'var(--accent)' : 'var(--up)';
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 2600);
+}
+function pctClass(v) { return v > 0 ? 'up' : (v < 0 ? 'down' : ''); }
+function fmtPct(v) { return v == null ? '--' : (v > 0 ? '+' : '') + Number(v).toFixed(2) + '%'; }
+function fmtYi(v) { return v == null ? '--' : (v / 1e8).toFixed(2); }
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function md(text) {
+  // 工具调用块折叠显示
+  text = text.replace(/```tool\n([\s\S]*?)```/g, (m, p) =>
+    `<details class="toolcall"><summary>🔧 调用工具获取实时数据 ▸</summary><pre>${esc(p.trim())}</pre></details>`);
+  try { return marked.parse(text); } catch (e) { return `<pre>${esc(text)}</pre>`; }
+}
+
+// ---------------- 导航 ----------------
+const PAGE_TITLES = { dashboard: ['仪表盘', '市场总览 · 自选股'], analyze: ['个股分析', '行情 · K线 · 基本面 · AI 报告'],
+  screen: ['智能选股', '策略筛选'], watch: ['盯盘提醒', '规则 · 实时事件'], chat: ['AI 对话助手', '实时数据 + 大模型分析'],
+  trade: ['交易', '本地浏览器 · 人工确认'], audit: ['审计日志', '用户操作 · AI 分析 · 程序执行全留痕'],
+  settings: ['设置', 'API 与模块配置'] };
+$$('.nav-item').forEach(el => el.onclick = () => {
+  $$('.nav-item').forEach(x => x.classList.remove('active'));
+  el.classList.add('active');
+  const p = el.dataset.page;
+  $$('.page').forEach(x => x.classList.remove('active'));
+  $('#page-' + p).classList.add('active');
+  $('#pageTitle').textContent = PAGE_TITLES[p][0];
+  $('#pageSub').textContent = PAGE_TITLES[p][1];
+  if (p === 'dashboard') loadDashboard();
+  if (p === 'watch') loadWatch();
+  if (p === 'trade') refreshTradeStatus();
+  if (p === 'audit') loadAuditLog();
+});
+
+// ---------------- 审计日志 ----------------
+let AUDIT_FILTER = '';
+function filterAudit(btn) {
+  AUDIT_FILTER = btn.dataset.filter;
+  $$('#page-audit [data-filter]').forEach(b => b.classList.toggle('ghost', b !== btn));
+  loadAuditLog();
+}
+async function loadAuditLog() {
+  try {
+    const q = AUDIT_FILTER ? `?type=${AUDIT_FILTER}` : '';
+    const r = await (await fetch(API + '/api/audit_log' + q)).json();
+    const list = (r.events || []).slice().reverse();
+    const typeIcon = { user_action: '👤', ai_analysis: '🧠', ai_tool_call: '🔧',
+      trade_exec: '⚡', watch_trigger: '🔔', auto_trade: '🤖', config_change: '⚙️' };
+    const typeColor = { user_action: 'var(--acc,#f5b942)', ai_analysis: 'var(--warn,#e6a23c)',
+      trade_exec: 'var(--up,#f04a5e)', auto_trade: 'var(--up,#f04a5e)', watch_trigger: 'var(--warn,#e6a23c)' };
+    $('#auditLogOut').innerHTML = list.length ? list.map(e => `
+      <div class="event" style="flex-wrap:wrap">
+        <div style="width:130px;flex:none" class="tag">${esc(e.time)}</div>
+        <div style="width:150px;flex:none;font-weight:600;color:${typeColor[e.type] || 'var(--muted)'}">
+          ${typeIcon[e.type] || '•'} ${esc(e.type)}</div>
+        <div style="flex:1;min-width:250px"><b>${esc(e.action)}</b>
+          <div class="tag" style="white-space:normal;word-break:break-all">${esc(JSON.stringify(e.detail || {}))}</div></div>
+      </div>`).join('') : '<div class="empty">暂无日志（进行任何操作后自动记录）</div>';
+  } catch (err) {
+    $('#auditLogOut').innerHTML = `<div class="empty">加载失败：${esc(err.message)}</div>`;
+  }
+}
+
+// ---------------- 配置 ----------------
+async function loadConfig() {
+  CONFIG = await (await fetch(API + '/api/config')).json();
+  $('#llmBadge').classList.toggle('ok', !!CONFIG._llm_ready);
+  $('#llmBadgeText').textContent = CONFIG._llm_ready ? `已连接 ${CONFIG.llm.model}` : '未配置 AI API → 设置';
+  $('#cfgBaseUrl').value = CONFIG.llm.base_url || '';
+  $('#cfgModel').value = CONFIG.llm.model || '';
+  $('#cfgKey').placeholder = CONFIG.llm.api_key || 'sk-...';
+  $('#cfgKey').value = '';
+  $('#cfgTemp').value = CONFIG.llm.temperature ?? 0.3;
+  $('#cfgPoll').value = CONFIG.watch.poll_interval ?? 30;
+  // 预设模板
+  const box = $('#llmPresets'); box.innerHTML = '';
+  (CONFIG.llm.presets || []).forEach(p => {
+    const c = document.createElement('div');
+    c.className = 'chip' + (p.base_url === CONFIG.llm.base_url ? ' active' : '');
+    c.textContent = p.name;
+    c.onclick = () => { $('#cfgBaseUrl').value = p.base_url; $('#cfgModel').value = p.model;
+      box.querySelectorAll('.chip').forEach(x => x.classList.remove('active')); c.classList.add('active'); };
+    box.appendChild(c);
+  });
+  // 可选插件（加密货币等）：由 /api/plugins 状态驱动，插件未安装则整卡隐藏
+  loadPluginUI();
+}
+async function loadPluginUI() {
+  try {
+    const plugins = await (await fetch(API + '/api/plugins')).json();
+    const crypto = plugins.find(p => p.name === 'crypto');
+    if (!crypto) { $('#cryptoCard').style.display = 'none'; return; }
+    $('#cryptoCard').style.display = 'block';
+    const on = !!crypto.enabled;
+    $('#swCrypto').classList.toggle('on', on);
+    $('#cryptoCfg').style.display = on ? 'block' : 'none';
+    if (!crypto.installed) {
+      $('#cryptoDepHint').innerHTML = '⚠ 插件加载失败：' + esc(crypto.error || '') + '（通常是 ccxt 未安装：pip install ccxt）';
+      return;
+    }
+    $('#cryptoDepHint').textContent = '默认关闭。启用后 AI 对话将支持加密货币行情查询，交易走交易所 API（默认模拟盘）';
+    $('#cfgExchange').value = crypto.config.exchange || 'binance';
+    $('#cfgCKey').value = ''; $('#cfgCSecret').value = '';
+    $('#cfgCKey').placeholder = crypto.config.api_key || '留空则仅查询行情';
+    $('#swSandbox').classList.toggle('on', crypto.config.sandbox !== false);
+  } catch (e) { $('#cryptoCard').style.display = 'none'; }
+}
+async function saveLLM() {
+  const body = { base_url: $('#cfgBaseUrl').value.trim(), model: $('#cfgModel').value.trim(),
+    temperature: parseFloat($('#cfgTemp').value) || 0.3 };
+  const key = $('#cfgKey').value.trim();
+  if (key) body.api_key = key; // 未输入则保留原 key
+  await fetch(API + '/api/config/llm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  toast('AI 配置已保存'); await loadConfig();
+}
+async function toggleCrypto(el) {
+  const on = !el.classList.contains('on');
+  await fetch(API + '/api/plugins/crypto/config', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ config: { enabled: on } }) });
+  el.classList.toggle('on', on);
+  $('#cryptoCfg').style.display = on ? 'block' : 'none';
+  toast(on ? '加密货币模块已启用' : '加密货币模块已关闭');
+  loadConfig();
+}
+async function saveCrypto() {
+  const body = { exchange: $('#cfgExchange').value, sandbox: $('#swSandbox').classList.contains('on') };
+  if ($('#cfgCKey').value.trim()) body.api_key = $('#cfgCKey').value.trim();
+  if ($('#cfgCSecret').value.trim()) body.secret = $('#cfgCSecret').value.trim();
+  await fetch(API + '/api/plugins/crypto/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ config: body }) });
+  toast('加密货币配置已保存'); await loadConfig();
+}
+async function saveWatchCfg() {
+  await fetch(API + '/api/config/watch', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ poll_interval: parseInt($('#cfgPoll').value) || 30 }) });
+  toast('盯盘设置已保存');
+}
+async function toggleConfirm(el) {
+  el.classList.toggle('on');
+  const manual = el.classList.contains('on');
+  await fetch(API + '/api/config/trading', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ require_manual_confirm: manual }) });
+  toast(manual ? '已开启人工确认（推荐）' : '⚠ 已关闭人工确认，请注意风险');
+}
+
+// ---------------- SSE 流式读取 ----------------
+async function streamSSE(url, body, onDelta, onDone) {
+  const resp = await fetch(API + url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (!resp.ok) { const e = await resp.json().catch(() => ({ detail: resp.statusText }));
+    onDelta('\n\n**错误：** ' + (e.detail || JSON.stringify(e))); onDone(); return; }
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '', full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split('\n\n'); buf = parts.pop();
+    for (const part of parts) {
+      const line = part.replace(/^data: /, '').trim();
+      if (line === '[DONE]') { onDone(full); return; }
+      try { const j = JSON.parse(line);
+        if (j.error) full += '\n\n**错误：** ' + j.error;
+        else if (j.delta) full += j.delta;
+        onDelta(full);
+      } catch (e) {}
+    }
+  }
+  onDone(full);
+}
+
+// ---------------- 仪表盘 ----------------
+async function loadDashboard() {
+  try {
+    const idx = await (await fetch(API + '/api/index_spot')).json();
+    $('#idxGrid').innerHTML = idx.map(i => `
+      <div class="idx-card"><div class="name">${esc(i['名称'])}</div>
+      <div class="val ${pctClass(i['涨跌幅'])}">${i['最新价']?.toFixed(2) ?? '--'}</div>
+      <div class="chg ${pctClass(i['涨跌幅'])}">${fmtPct(i['涨跌幅'])}　${i['涨跌额']?.toFixed(2) ?? ''}</div></div>`).join('');
+  } catch (e) { $('#idxGrid').innerHTML = `<div class="empty">指数加载失败：${esc(e.message)}</div>`; }
+  try {
+    const favs = await (await fetch(API + '/api/favorites')).json();
+    const tb = $('#favTable tbody');
+    if (!favs.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">暂无自选股，添加一个吧</td></tr>'; return; }
+    tb.innerHTML = favs.map(f => `
+      <tr><td>${f['代码']}</td><td>${esc(f['名称'])}</td>
+      <td class="${pctClass(f['涨跌幅'])}">${f['最新价']?.toFixed(2)}</td>
+      <td class="${pctClass(f['涨跌幅'])}">${fmtPct(f['涨跌幅'])}</td>
+      <td class="${pctClass(f['涨跌幅'])}">${f['涨跌额']?.toFixed(2)}</td>
+      <td>${fmtYi(f['成交额'])}亿</td><td>${f['换手率']?.toFixed(2) ?? '--'}%</td>
+      <td><button class="btn sm ghost" onclick="analyzeFrom('${f['代码']}')">分析</button>
+      <button class="btn sm danger" onclick="delFav('${f['代码']}')">移除</button></td></tr>`).join('');
+  } catch (e) { console.error(e); }
+}
+async function addFav() {
+  const s = $('#favInput').value.trim();
+  if (!/^\d{6}$/.test(s)) return toast('请输入6位数字代码', false);
+  await fetch(API + '/api/favorites', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ symbol: s, action: 'add' }) });
+  $('#favInput').value = ''; loadDashboard();
+}
+async function delFav(s) {
+  await fetch(API + '/api/favorites', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ symbol: s, action: 'remove' }) });
+  loadDashboard();
+}
+function analyzeFrom(code) {
+  $$('.nav-item')[1].click();
+  $('#anaSymbol').value = code;
+  setTimeout(doAnalyze, 100);
+}
+async function genSummary() {
+  const btn = $('#btnSummary'); btn.disabled = true; btn.textContent = 'AI 分析中…';
+  const out = $('#summaryOut');
+  await streamSSE(API + '/api/chat',
+    { messages: [{ role: 'user', content: '请结合实时数据对今日A股市场做一个简明总结：主要指数表现、市场情绪（涨跌家数）、成交额水平，并给出2-3条简短观察。控制在300字内。' }] },
+    t => out.innerHTML = md(t),
+    () => { btn.disabled = false; btn.textContent = '重新生成'; });
+}
+
+// ---------------- 个股分析 ----------------
+let currentAna = null;
+async function doAnalyze() {
+  const s = $('#anaSymbol').value.trim();
+  if (!/^\d{6}$/.test(s)) return toast('请输入6位数字代码', false);
+  const btn = event.target; btn.disabled = true; btn.textContent = '获取数据中…';
+  try {
+    const data = await (await fetch(API + '/api/analyze', { method: 'POST',
+      headers: {'Content-Type':'application/json'}, body: JSON.stringify({ symbol: s }) })).json();
+    if (data.detail) throw new Error(data.detail);
+    currentAna = data;
+    $('#anaResult').style.display = 'block';
+    const sp = data.spot, ind = data.indicators;
+    $('#anaCards').innerHTML = `
+      <div class="idx-card"><div class="name">${esc(sp['名称'])} · ${sp['代码']}</div>
+        <div class="val ${pctClass(sp['涨跌幅'])}">${sp['最新价']?.toFixed(2)}</div>
+        <div class="chg ${pctClass(sp['涨跌幅'])}">${fmtPct(sp['涨跌幅'])}　成交 ${fmtYi(sp['成交额'])}亿</div></div>
+      <div class="idx-card"><div class="name">换手率 / 量比</div>
+        <div class="val">${sp['换手率']?.toFixed(2) ?? '--'}% / ${ind['量比(5日)'] ?? '--'}</div>
+        <div class="chg">今开 ${sp['今开']?.toFixed(2)}　最高 ${sp['最高']?.toFixed(2)}　最低 ${sp['最低']?.toFixed(2)}</div></div>
+      <div class="idx-card"><div class="name">均线系统</div>
+        <div class="val" style="font-size:16px">MA5 ${ind['MA5'] ?? '--'} ｜ MA10 ${ind['MA10'] ?? '--'}<br>MA20 ${ind['MA20'] ?? '--'} ｜ MA60 ${ind['MA60'] ?? '--'}</div>
+        <div class="chg">近5日 ${fmtPct(ind['近5日涨跌%'])}　近20日 ${fmtPct(ind['近20日涨跌%'])}</div></div>
+      <div class="idx-card"><div class="name">估值</div>
+        <div class="val" style="font-size:16px">PE ${esc(data.profile['市盈率'] ?? '--')} ｜ PB ${esc(data.profile['市净率'] ?? '--')}</div>
+        <div class="chg">${esc(data.profile['行业'] ?? '')}　总市值 ${esc(data.profile['总市值'] ?? '--')}亿</div></div>`;
+    drawKline(data.kline_tail);
+    const p = data.profile;
+    $('#anaProfile').innerHTML = Object.entries(p).map(([k, v]) =>
+      `<span class="pill" style="margin:2px 4px 2px 0">${k}: ${esc(v)}</span>`).join('');
+    $('#anaNews').innerHTML = (data.news || []).map(n => `
+      <div style="padding:9px 0;border-bottom:1px solid var(--border)">
+        <a href="${esc(n['新闻链接'])}" target="_blank" style="color:var(--text);text-decoration:none;font-size:13px">📄 ${esc(n['新闻标题'])}</a>
+        <div class="tag">${esc(n['发布时间'] ?? '')} · ${esc(n['文章来源'] ?? '')}</div></div>`).join('') || '<div class="empty">暂无新闻</div>';
+    $('#reportOut').innerHTML = '';
+  } catch (e) { toast('分析失败：' + e.message, false); }
+  btn.disabled = false; btn.textContent = '分析';
+}
+let kchart = null;
+function drawKline(rows) {
+  if (!kchart) kchart = echarts.init($('#kchart'));
+  const dates = rows.map(r => r['日期']);
+  const kdata = rows.map(r => [r['开盘'], r['收盘'], r['最低'], r['最高']]);
+  const vols = rows.map(r => r['成交量']);
+  const ma = n => rows.map((_, i) => { if (i < n - 1) return null;
+    const s = rows.slice(i - n + 1, i + 1).reduce((a, b) => a + (b['收盘'] || 0), 0); return +(s / n).toFixed(2); });
+  kchart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' }, backgroundColor: '#1a2130', borderColor: '#232c3f', textStyle: { color: '#dbe2f0', fontSize: 12 } },
+    grid: [{ left: '8%', right: '3%', top: '8%', height: '58%' }, { left: '8%', right: '3%', top: '74%', height: '16%' }],
+    xAxis: [{ type: 'category', data: dates, axisLine: { lineStyle: { color: '#232c3f' } }, axisLabel: { color: '#7b869e' } },
+            { type: 'category', gridIndex: 1, data: dates, axisLabel: { show: false }, axisLine: { lineStyle: { color: '#232c3f' } } }],
+    yAxis: [{ scale: true, splitLine: { lineStyle: { color: 'rgba(35,44,63,.5)' } }, axisLabel: { color: '#7b869e' } },
+            { gridIndex: 1, splitLine: { show: false }, axisLabel: { show: false } }],
+    series: [
+      { name: 'K线', type: 'candlestick', data: kdata,
+        itemStyle: { color: '#f04a5e', color0: '#2ec27e', borderColor: '#f04a5e', borderColor0: '#2ec27e' } },
+      { name: 'MA5', type: 'line', data: ma(5), smooth: true, showSymbol: false, lineStyle: { width: 1.2, color: '#f5b942' } },
+      { name: 'MA10', type: 'line', data: ma(10), smooth: true, showSymbol: false, lineStyle: { width: 1.2, color: '#4f8cff' } },
+      { name: 'MA20', type: 'line', data: ma(20), smooth: true, showSymbol: false, lineStyle: { width: 1.2, color: '#b07cf0' } },
+      { name: '成交量', type: 'bar', xAxisIndex: 1, yAxisIndex: 1, data: vols,
+        itemStyle: { color: (p) => p.dataIndex > 0 && rows[p.dataIndex]['收盘'] >= rows[p.dataIndex]['开盘'] ? '#f04a5e' : '#2ec27e', opacity: .65 } }
+    ]
+  });
+}
+let currentSignals = null;
+async function genReport() {
+  if (!currentAna) return;
+  if (!CONFIG?._llm_ready) return toast('请先在【设置】中配置 AI API', false);
+  const btn = $('#btnReport'); btn.disabled = true; btn.textContent = 'AI 报告生成中…';
+  const out = $('#reportOut');
+  $('#signalBox').style.display = 'none';
+  await streamSSE(API + '/api/ai_report', { symbol: currentAna.spot['代码'], name: currentAna.spot['名称'] },
+    t => out.innerHTML = md(t.replace(/<!--SIGNALS:.*?-->/gs, '')),
+    t => {
+      btn.disabled = false; btn.textContent = '重新生成报告';
+      // 解析报告末尾的机器可读信号块，渲染一键操作
+      const m = (t || '').match(/<!--SIGNALS:(.*?)-->/s);
+      currentSignals = null;
+      if (m) { try { currentSignals = JSON.parse(m[1]); } catch (e) {} }
+      renderSignalBox();
+    });
+}
+function renderSignalBox() {
+  const box = $('#signalBox'), s = currentSignals;
+  if (!s || !(s.buy_low || s.target || s.stop)) { box.style.display = 'none'; return; }
+  const rating = esc(s.rating || '');
+  box.style.display = 'block';
+  box.innerHTML = `
+  <div class="signal-card">
+    <div class="signal-head">🎯 AI 信号 <b>${rating}</b>${s.horizon ? `<span class="tag">${esc(s.horizon)}</span>` : ''}</div>
+    <div class="signal-prices">
+      ${s.buy_low ? `<div><span class="tag">建议买入区间</span><b>${s.buy_low} ~ ${s.buy_high || s.buy_low}</b> 元</div>` : ''}
+      ${s.target ? `<div><span class="tag">目标价</span><b class="up">${s.target}</b> 元</div>` : ''}
+      ${s.stop ? `<div><span class="tag">止损价</span><b class="down">${s.stop}</b> 元</div>` : ''}
+    </div>
+    <div class="signal-actions">
+      <button class="btn sm" onclick="applySignalWatch()">🔔 一键设置买卖阈值（盯盘提醒）</button>
+      ${s.buy_low || s.buy_high ? '<button class="btn sm ghost" onclick="applySignalOrder(\'buy\')">⚡ 填入买入委托单</button>' : ''}
+      ${s.target ? '<button class="btn sm ghost" onclick="applySignalOrder(\'sell\')">💰 填入卖出委托单（目标价）</button>' : ''}
+    </div>
+    <div class="tag">阈值将写入盯盘规则：跌至买入区间 / 涨至目标价 / 跌破止损价时页面提醒</div>
+  </div>`;
+}
+async function applySignalWatch() {
+  const s = currentSignals; if (!s || !currentAna) return;
+  const sym = currentAna.spot['代码'], name = currentAna.spot['名称'];
+  const rules = [];
+  if (s.buy_low) rules.push({ symbol: sym, name: name, type: 'price_below', threshold: Number(s.buy_low) });
+  if (s.target) rules.push({ symbol: sym, name: name, type: 'price_above', threshold: Number(s.target) });
+  if (s.stop) rules.push({ symbol: sym, name: name, type: 'price_below', threshold: Number(s.stop) });
+  if (!rules.length) return toast('AI 未给出可用价格', false);
+  let ok = 0;
+  for (const r of rules) {
+    const resp = await (await fetch(API + '/api/watch/rules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(r) })).json();
+    if (resp.ok) ok++;
+  }
+  toast(`已为 ${name}(${sym}) 添加 ${ok} 条买卖阈值规则，可到【盯盘提醒】查看`);
+}
+function applySignalOrder(side) {
+  const s = currentSignals; if (!s || !currentAna) return;
+  $('#oSymbol').value = currentAna.spot['代码'];
+  $('#oSide').value = side;
+  $('#oPrice').value = side === 'buy' ? (s.buy_high || s.buy_low) : s.target;
+  if (!$('#oQty').value) $('#oQty').value = 100;
+  document.querySelector('.nav-item[data-page="trade"]').click();
+  toast(side === 'buy'
+    ? `已填入买入委托单（价格取建议买入区间上沿 ${s.buy_high || s.buy_low} 元），请核对数量后执行`
+    : `已填入卖出委托单（价格取目标价 ${s.target} 元），请核对数量后执行`);
+}
+
+// ---------------- 智能选股 ----------------
+let screenStrategy = 'volume_break';
+$$('.page[id=page-screen] .chip').forEach(c => c.onclick = () => {
+  $$('.page[id=page-screen] .chip').forEach(x => x.classList.remove('active'));
+  c.classList.add('active'); screenStrategy = c.dataset.st;
+});
+async function doScreen() {
+  const btn = $('#btnScreen'); btn.disabled = true; btn.textContent = '选股中（拉取全市场数据）…';
+  const tb = $('#screenTable tbody');
+  tb.innerHTML = '<tr><td colspan="7" class="loading">正在扫描市场，可能需要 10~60 秒…</td></tr>';
+  try {
+    const r = await (await fetch(API + '/api/screen', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ strategy: screenStrategy, pool_size: 20 }) })).json();
+    const st = { volume_break: '放量突破', oversold: '超跌反弹', ma_bull: '均线多头', hot: '热门人气' };
+    $('#screenTitle').textContent = `${st[screenStrategy]} · 共 ${r.stocks.length} 只`;
+    tb.innerHTML = r.stocks.length ? r.stocks.map(f => `
+      <tr><td>${f['代码']}</td><td>${esc(f['名称'])}</td>
+      <td class="${pctClass(f['涨跌幅'])}">${f['最新价']?.toFixed(2)}</td>
+      <td class="${pctClass(f['涨跌幅'])}">${fmtPct(f['涨跌幅'])}</td>
+      <td>${fmtYi(f['成交额'])}</td><td>${f['换手率']?.toFixed(2) ?? '--'}%</td>
+      <td><button class="btn sm ghost" onclick="analyzeFrom('${f['代码']}')">深度分析</button></td></tr>`).join('')
+      : '<tr><td colspan="7" class="empty">今日无符合策略的股票</td></tr>';
+  } catch (e) { tb.innerHTML = `<tr><td colspan="7" class="empty">选股失败：${esc(e.message)}</td></tr>`; }
+  btn.disabled = false; btn.textContent = '开始选股';
+}
+
+// ---------------- 盯盘 ----------------
+async function loadWatch() {
+  const cfg = await (await fetch(API + '/api/config')).json();
+  const rules = cfg.watch_rules || [];
+  const tn = { price_above: '价格 ≥', price_below: '价格 ≤', pct_above: '涨幅 ≥', pct_below: '跌幅 ≥' };
+  $('#ruleTable tbody').innerHTML = rules.length ? rules.map((r, i) => `
+    <tr><td>${r.symbol}</td><td>${tn[r.type]} ${r.threshold}${r.type.includes('pct') ? '%' : ' 元'}</td>
+    <td><button class="btn sm danger" onclick="delRule(${i})">删除</button></td></tr>`).join('')
+    : '<tr><td colspan="3" class="empty">暂无规则</td></tr>';
+  const ev = await (await fetch(API + '/api/watch/events')).json();
+  const list = ev.events || [];
+  $('#eventList').innerHTML = list.length ? list.map(e => `
+    <div class="event"><div style="flex:1"><b>${esc(e.name)} (${e.symbol})</b>　${esc(e.msg)}
+    <div class="tag">现价 ${e.price} ｜ 涨跌 ${fmtPct(e.pct)}</div></div>
+    <div class="time">${esc(e.time)}</div></div>`).join('').reverse() : '<div class="empty">暂无提醒事件</div>';
+}
+async function addWatchRule() {
+  const s = $('#wSymbol').value.trim();
+  if (!/^\d{6}$/.test(s)) return toast('请输入6位代码', false);
+  await fetch(API + '/api/watch/rules', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ symbol: s, type: $('#wType').value, threshold: parseFloat($('#wThreshold').value) }) });
+  toast('规则已添加，后台开始监控'); loadWatch();
+}
+async function delRule(i) {
+  await fetch(API + `/api/watch/rules/${i}`, { method: 'DELETE' }); loadWatch();
+}
+
+// ---------------- AI 对话 ----------------
+const chatMessages = [];
+let chatBusy = false;
+async function sendChat() {
+  if (chatBusy) return;
+  const input = $('#chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  if (!CONFIG?._llm_ready) { toast('请先在【设置】中配置 AI API', false); $$('.nav-item')[7].click(); return; }
+  input.value = '';
+  chatMessages.push({ role: 'user', content: text });
+  appendMsg('user', text);
+  const aiEl = appendMsg('ai', '<span class="typing"><i></i><i></i><i></i></span>');
+  chatBusy = true; $('#btnSend').disabled = true;
+  await streamSSE(API + '/api/chat', { messages: chatMessages.slice(-20) },
+    t => { aiEl.querySelector('.bubble').innerHTML = md(t) + '<span class="typing"><i></i><i></i><i></i></span>'; },
+    t => {
+      aiEl.querySelector('.bubble').innerHTML = md(t || '（无回复）');
+      if (t) chatMessages.push({ role: 'assistant', content: t });
+      chatBusy = false; $('#btnSend').disabled = false;
+    });
+}
+function appendMsg(role, html) {
+  const log = $('#chatLog');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = `<div class="bubble">${html}</div>`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+  return div;
+}
+$('#chatInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// ---------------- 交易 ----------------
+async function openBroker() {
+  const r = await (await fetch(API + '/api/trade/open', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ url: $('#brokerUrl').value.trim() }) })).json();
+  if (r.error) toast('打开失败：' + r.error, false);
+  else { toast('浏览器已打开，请登录你的券商账号'); refreshTradeStatus(); }
+}
+async function refreshTradeStatus() {
+  try {
+    const s = await (await fetch(API + '/api/trade/status')).json();
+    $('#tradeStatus').innerHTML = !s.available ? '⚠ DrissionPage 未安装'
+      : s.running ? `✅ 浏览器已连接：<b>${esc(s.title || s.url || '')}</b>`
+      : '浏览器未启动';
+  } catch (e) { $('#tradeStatus').textContent = ''; }
+  refreshAutoModeUI();
+  loadTradeLog();
+}
+async function fillOrder(auto) {
+  const body = { symbol: $('#oSymbol').value.trim(), price: parseFloat($('#oPrice').value),
+    quantity: parseInt($('#oQty').value), side: $('#oSide').value, auto: !!auto };
+  if (!/^\d{6}$/.test(body.symbol)) return toast('请输入6位代码', false);
+  if (!body.price || !body.quantity) return toast('请填写价格和数量', false);
+  if (auto) {
+    const cfg = await (await fetch(API + '/api/config')).json();
+    if (!cfg.trading.auto_mode) return toast('请先开启 Open 模式（安全机制卡片）', false);
+    if (!confirm(`⚠️ Open 模式：即将自动${body.side === 'buy' ? '买入' : '卖出'} ${body.symbol} ${body.quantity} 股 @ ${body.price} 元，确认执行？`)) return;
+  }
+  const r = await (await fetch(API + '/api/trade/fill', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body) })).json();
+  if (r.ok) {
+    toast(r.submitted ? '🔥 Open 模式：委托已自动提交，请查看券商回报' : '已填充到浏览器，请核对后手动点击下单');
+    loadTradeLog(); refreshTradeStatus();
+  } else toast('填充失败：' + (r.error || '') + ' ' + (r.hint || ''), false);
+}
+async function runTradeTest(side) {
+  const out = $('#tradeTestOut');
+  out.innerHTML = '<div class="loading">测试进行中：正在打开模拟券商页并执行填单/点击…</div>';
+  try {
+    const r = await (await fetch(API + '/api/trade/test', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ side }) })).json();
+    out.innerHTML = `
+      <div style="font-size:13.5px;font-weight:600;color:${r.passed ? 'var(--down)' : 'var(--up)'}">
+        ${r.passed ? '✅ 交易控制链路正常' : '❌ 测试未通过'}</div>
+      ${r.steps.map(s => `<div style="display:flex;gap:8px;font-size:12.5px;margin-top:6px;align-items:flex-start">
+        <span>${s.ok ? '✅' : '❌'}</span><div><b>${esc(s.step)}</b><div class="tag" style="white-space:normal">${esc(s.detail || '')}</div></div></div>`).join('')}
+      ${r.hint ? `<div class="tag" style="margin-top:8px;white-space:normal">${esc(r.hint)}</div>` : ''}`;
+    toast(r.passed ? '交易控制测试通过' : '交易控制测试未通过', r.passed);
+  } catch (e) {
+    out.innerHTML = `<div class="empty">测试失败：${esc(e.message)}（请确认应用后端正在运行）</div>`;
+  }
+}
+// Open 模式（AI 自主下单，极高权限）
+async function refreshAutoModeUI() {
+  try {
+    const cfg = await (await fetch(API + '/api/config')).json();
+    const on = !!cfg.trading.auto_mode;
+    $('#swAuto').classList.toggle('on', on);
+    $('#openBanner').style.display = on ? 'block' : 'none';
+    $('#btnAutoFill').style.display = on ? 'inline-block' : 'none';
+    // 全自动交易状态
+    const at = cfg.auto_trade || {};
+    $('#swFullAuto').classList.toggle('on', !!at.enabled);
+    if (at.max_amount) $('#atMaxAmount').value = at.max_amount;
+    if (at.max_daily_trades) $('#atMaxDaily').value = at.max_daily_trades;
+    if (at.min_confidence != null) $('#atMinConf').value = at.min_confidence;
+    loadAutoTradeEvents();
+  } catch (e) {}
+}
+// 全自动交易
+async function toggleFullAuto(el) {
+  const cfg = await (await fetch(API + '/api/config')).json();
+  const on = !cfg.auto_trade?.enabled;
+  if (on) {
+    const open = !!cfg.trading?.auto_mode;
+    if (!confirm(`⚠️ 即将开启【全自动交易】：盯盘规则触发后 AI 将自动决策${open ? '并直接下单' : '（当前 Open 模式未开启，只会记录决策建议，不会实际下单）'}。\n盈亏自负，建议先用小额度试运行。确认开启？`)) return;
+  }
+  await fetch(API + '/api/config/auto_trade', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: on, max_amount: parseFloat($('#atMaxAmount').value) || 5000,
+      max_daily_trades: parseInt($('#atMaxDaily').value) || 3, min_confidence: parseFloat($('#atMinConf').value) || 0.7 }) });
+  toast(on ? '全自动交易已开启' : '全自动交易已关闭');
+  refreshAutoModeUI();
+}
+async function saveAutoTradeCfg() {
+  await fetch(API + '/api/config/auto_trade', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ max_amount: parseFloat($('#atMaxAmount').value) || 5000,
+      max_daily_trades: parseInt($('#atMaxDaily').value) || 3, min_confidence: parseFloat($('#atMinConf').value) || 0.7 }) });
+  toast('风控参数已保存');
+}
+async function stopFullAuto() {
+  await fetch(API + '/api/auto_trade/stop', { method: 'POST' });
+  toast('已急停：全自动交易关闭（Open 模式需单独关闭）');
+  refreshAutoModeUI();
+}
+async function loadAutoTradeEvents() {
+  try {
+    const r = await (await fetch(API + '/api/auto_trade/events')).json();
+    const list = r.events || [];
+    const kindMap = { trigger: ['🔍', 'var(--muted)'], decision: ['🎯', 'var(--warn)'], executed: ['🔥', 'var(--up)'],
+      skip: ['⏭', 'var(--muted)'], blocked: ['🚫', 'var(--warn)'], error: ['❌', 'var(--up)'] };
+    $('#autoTradeEvents').innerHTML = list.length ? list.slice().reverse().map(e => `
+      <div class="event"><div style="flex:1">${(kindMap[e.kind] || ['•'])[0]} <b>${esc(e.name)}(${e.symbol})</b>　${esc(e.detail)}
+      <div class="tag">${e.time}</div></div></div>`).join('') : '<div class="empty">暂无事件</div>';
+  } catch (e) {}
+}
+async function toggleAutoMode(force) {
+  const cfg = await (await fetch(API + '/api/config')).json();
+  const on = force === null ? !cfg.trading.auto_mode : force;
+  if (on) { // 开启前必须阅读并同意免责声明
+    $('#agreeCheck').checked = false;
+    $('#btnAgree').disabled = true;
+    $('#disclaimerMask').classList.add('show');
+    return;
+  }
+  await fetch(API + '/api/config/trading', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ auto_mode: false }) });
+  toast('Open 模式已关闭，恢复人工确认');
+  refreshAutoModeUI();
+}
+$('#agreeCheck')?.addEventListener('change', e => { $('#btnAgree').disabled = !e.target.checked; });
+function closeDisclaimer() { $('#disclaimerMask').classList.remove('show'); }
+async function agreeDisclaimer() {
+  if (!$('#agreeCheck').checked) return;
+  await fetch(API + '/api/config/trading', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ auto_mode: true }) });
+  closeDisclaimer();
+  toast('⚠️ Open 模式已开启：AI 可自主下单，风险自负', false);
+  refreshAutoModeUI();
+}
+async function loadTradeLog() {
+  try {
+    const r = await (await fetch(API + '/api/trade/log')).json();
+    const logs = (r.logs || []).slice().reverse();
+    $('#tradeLog').innerHTML = logs.length ? logs.map(l => `
+      <div class="event" style="border-left-color:${l.submitted ? 'var(--up)' : 'var(--accent)'}">
+        <div style="flex:1">
+          <b>${l.side === 'buy' ? '🟥 买入' : '🟩 卖出'} ${esc(l.symbol)}</b>
+          ${l.quantity} 股 @ ${l.price} 元
+          <span class="pill ${l.submitted ? 'red' : 'blue'}">${l.submitted ? '已自动提交 (Open)' : '仅填充'}</span>
+        </div>
+        <div class="time">${esc(l.time || '')}</div>
+      </div>`).join('') : '<div class="empty">暂无记录</div>';
+  } catch (e) {}
+}
+
+// ---------------- 初始化 ----------------
+window.addEventListener('resize', () => kchart && kchart.resize());
+loadConfig().then(() => { loadDashboard(); setInterval(loadDashboard, 30000); setInterval(loadWatch, 20000); });
+</script>
+</body>
+</html>

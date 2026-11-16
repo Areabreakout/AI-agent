@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn>=0.29
+pywebview>=5.0
+openai>=1.30
+akshare>=1.13
+DrissionPage>=4.0
+# 可选插件依赖（按需安装）：
+# 加密货币插件 app/plugins/tools_crypto.py → pip install ccxt

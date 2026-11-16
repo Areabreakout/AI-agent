@@ -1,0 +1,27 @@
+{
+  "llm": {
+    "base_url": "https://api.deepseek.com/v1",
+    "api_key": "",
+    "model": "deepseek-chat",
+    "temperature": 0.3,
+    "presets": [
+      {"name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
+      {"name": "智谱 GLM", "base_url": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4-flash"},
+      {"name": "通义千问", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus"},
+      {"name": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
+      {"name": "Kimi", "base_url": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k"}
+    ]
+  },
+  "trading": {
+    "require_manual_confirm": true,
+    "auto_mode": false,
+    "default_quantity": 100,
+    "broker_url": "https://jywg.eastmoney.com/",
+    "headless": false
+  },
+  "watch": {
+    "poll_interval": 30
+  },
+  "favorites": ["600519", "000001", "300750", "601318"],
+  "watch_rules": []
+}
